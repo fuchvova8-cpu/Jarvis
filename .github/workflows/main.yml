@@ -1,0 +1,55 @@
+name: Build APK
+
+# Положите этот файл в репозиторий по пути  .github/workflows/main.yml
+# Проект можно залить либо распакованным (settings.gradle.kts в корне или в папке),
+# либо как есть — архивом MarkTV.zip в корне репозитория: он будет распакован сам.
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unpack archive and find project
+        run: |
+          shopt -s nullglob
+          for z in *.zip; do
+            echo "Unpacking $z"
+            unzip -q -o "$z" -d _unzipped
+          done
+          S=$(find . -name settings.gradle.kts -not -path './.git/*' | head -n1)
+          if [ -z "$S" ]; then
+            echo "settings.gradle.kts not found: upload the project or MarkTV.zip to the repo root"
+            exit 1
+          fi
+          ROOT=$(dirname "$S")
+          echo "Project root: $ROOT"
+          echo "PROJECT_ROOT=$ROOT" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # Chaquopy needs a Python on the build machine
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+
+      - name: Build debug APK
+        run: |
+          cd "$PROJECT_ROOT"
+          gradle :app:assembleDebug --no-daemon --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MarkTV-debug-apk
+          path: ${{ env.PROJECT_ROOT }}/app/build/outputs/apk/debug/*.apk
